@@ -18,9 +18,7 @@ internal abstract class Type (string name, Constness constness)
     public string Name { get; } = name;
 }
 
-internal abstract class PrimitiveType (string name, Constness constness) : Type(name, constness)
-{
-}
+internal abstract class PrimitiveType (string name, Constness constness) : Type(name, constness);
 
 internal class IntType (int bitWidth, Signedness signedness, Constness constness)
     : PrimitiveType("int" + bitWidth.ToString(), constness)
@@ -29,12 +27,7 @@ internal class IntType (int bitWidth, Signedness signedness, Constness constness
     public Signedness Signedness { get; } = signedness;
 }
 
-internal sealed class VoidType : PrimitiveType
-{
-    public VoidType() : base("void", Constness.Mutable)
-    {
-    }
-}
+internal sealed class VoidType() : PrimitiveType("void", Constness.Mutable);
 
 internal sealed class PointerType(Type baseType, Constness constness) : Type(baseType.Name + " ptr", constness)
 {

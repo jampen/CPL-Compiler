@@ -22,11 +22,7 @@ internal sealed class X64Backend() : Backend(new X64Allocator())
         }
     }
 
-
-    private void WriteLine(string s)
-    {
-        Console.WriteLine(s);
-    }
+    private void WriteLine(string s) => Console.WriteLine(s);
 
     private void Load(IR.Load load)
     {
