@@ -11,21 +11,23 @@ internal sealed class X64Backend() : Backend(new X64Allocator())
             X64Allocator allocator = new();
             X64InstructionSelector selector = new(Allocator: allocator);
             IR.Function function = functionDefinition.Value;
-            selector.Emit(function.Block);
+
+            // Emit instructions
+            function.Block.Instructions.ForEach(selector.Emit);
 
             // Emit Prologue
             WriteLine($"global {function.Name}");
             WriteLine($"{function.Name}:");
             WriteLine("\tpush rbp");
             WriteLine("\tmov rbp, rsp");
-            WriteLine($"\tsub rsp, {allocator.StackSize}");
+            WriteLine($"\tsub rsp, {IAllocator.Align16(allocator.StackSize)}");
 
             Stack<X64Allocator.Register> calleeRegisters = new (allocator.CalleeSavedRegisters.AsEnumerable());
 
             // Save callee registers
             foreach (X64Allocator.Register calleeRegister in allocator.CalleeSavedRegisters)
             {
-                WriteLine($"\tpush {calleeRegister.ToString()}");
+                WriteLine($"\tpush {calleeRegister}");
             }
 
             // Function:
@@ -35,12 +37,10 @@ internal sealed class X64Backend() : Backend(new X64Allocator())
             }
 
             // Pop callee registers
-            
             while (calleeRegisters.Count > 0) { 
                 X64Allocator.Register calleeRegister = calleeRegisters.Pop();
-                WriteLine($"\tpop {calleeRegister.ToString()}");
+                WriteLine($"\tpop {calleeRegister}");
             }
-
 
             // Emit Epilogue
             WriteLine("\tmov rsp, rbp");

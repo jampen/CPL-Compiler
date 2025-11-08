@@ -9,6 +9,8 @@ internal sealed class IntType(int bitWidth) : Type
     public int BitWidth { get; } = bitWidth;
 }
 
+internal sealed class BooleanType() : Type;
+
 internal sealed class PointerType(Type baseType) : Type
 {
     public Type BaseType { get; } = baseType;

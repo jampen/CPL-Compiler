@@ -16,6 +16,17 @@ static AST.INode IntLiteral(string value, int width)
 var main = new AST.Function("main", void_t);
 main.Statements.Add(new AST.DeclareVariable("a", IntLiteral("10", 8), int8));
 main.Statements.Add(new AST.DeclareVariable("b", IntLiteral("20", 16), int16));
+main.Statements.Add(new AST.IfStatement(
+    condition: new AST.Comparison(new AST.Identifier("a"), new AST.Identifier("b"), AST.ComparisonType.LessThan),
+    thenBlock: new AST.Block(statements: [
+        new AST.DeclareVariable("c", IntLiteral("30", 16), int16)
+    ]),
+    elseBlock:
+    new AST.Block(statements: [
+        new AST.DeclareVariable("c", IntLiteral("40", 16), int16)
+    ])
+    )
+);
 
 IR.Context context = new();
 main.CodeGen(context);

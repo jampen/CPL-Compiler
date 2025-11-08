@@ -1,12 +1,12 @@
 ﻿namespace CPL.BE;
 
-public static class X64TypeExtensions
+internal static class X64TypeExtensions
 {
     internal static int X64Size(this IR.Type type)
     {
         if (type is IR.IntType intType)
         {
-            return intType.BitWidth / 8;
+            return (int)Math.Ceiling((float)(intType.BitWidth) / 8);
         }
 
         if (type is IR.PointerType)
@@ -21,6 +21,11 @@ public static class X64TypeExtensions
         }
 
         if (type is IR.VoidType)
+        {
+            return 1;
+        }
+
+        if (type is IR.BooleanType)
         {
             return 1;
         }

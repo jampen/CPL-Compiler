@@ -1,7 +1,8 @@
 ﻿namespace CPL.IR;
 
-internal class Block() : Instruction(new VoidType())
+internal class Block(string name) : Instruction(new VoidType())
 {
+    public string Name { get; } = name;
     public Dictionary<string, Variable> Variables { get; private set; } = new();
     public List<Instruction> Instructions { get; private set; } = new();
 

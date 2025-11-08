@@ -1,4 +1,6 @@
-﻿namespace CPL.IR;
+﻿using CPL.AST;
+
+namespace CPL.IR;
 internal class VariableAlreadyDefinedException(string Name)
     : Exception($"Variable '{Name}' is already defined.");
 
@@ -15,7 +17,7 @@ internal class Context
 
     public Block EnterBlock(string name)
     {
-        var block = new Block();
+        var block = new Block(name);
         blockStack.Push(block);
         Blocks.Add(block);
         return block;

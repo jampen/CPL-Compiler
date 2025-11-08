@@ -1,12 +1,12 @@
 ﻿namespace CPL.BE;
 
-public static class X64MemoryLocationExtensions
+internal static class X64MemoryLocationExtensions
 {
     internal static string X64Rep(this MemoryLocation location)
     {
         if (location is StackLocation stackLocation)
         {
-            return location.X64Rep();
+            return stackLocation.X64Rep();
         }
         else if (location is RegisterLocation registerLocation)
         {

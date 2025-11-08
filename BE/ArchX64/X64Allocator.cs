@@ -1,4 +1,8 @@
-﻿namespace CPL.BE;
+﻿using CPL.IR;
+using System.Linq;
+using static CPL.BE.X64Allocator;
+
+namespace CPL.BE;
 
 internal sealed class AlreadyAllocatedException(IR.Value value) : Exception($"{nameof(value)} was already allocated");
 internal sealed class NotAllocatedException(IR.Value value) : Exception($"{nameof(value)} is not allocated");
@@ -29,12 +33,13 @@ internal sealed class X64Allocator : IAllocator
         R15, R15D, R15W, R15B,
     }
 
+    // Must be in size-order smallest to largest
     public enum RegisterSize
     {
-        QWORD,
-        DWORD,
-        WORD,
         BYTE,
+        WORD,
+        DWORD,
+        QWORD,
     }
 
     // Maps x64 register sizes to their family of registers
@@ -46,14 +51,49 @@ internal sealed class X64Allocator : IAllocator
         [RegisterSize.BYTE] = [Register.AL, Register.BL, Register.CL, Register.DL, Register.R9B, Register.R10B, Register.R11B, Register.R12B, Register.R13B, Register.R14B, Register.R15B],
     };
 
+
+    // In smallest to largest order
+    private static readonly Dictionary<Register, Register[]> registerFamilies = new()
+    {
+        [Register.RAX] = [Register.AL, Register.AX, Register.EAX, Register.RAX],
+        [Register.RBX] = [Register.BL, Register.BX, Register.EBX, Register.RBX],
+        [Register.RCX] = [Register.CL, Register.CX, Register.ECX, Register.RCX],
+        [Register.RDX] = [Register.DL, Register.DX, Register.EDX, Register.RDX],
+        [Register.R8] =  [Register.R8B, Register.AX, Register.EAX, Register.RAX],
+        [Register.R9] =  [Register.R9B, Register.R9W, Register.R9D, Register.R9],
+        [Register.R10] = [Register.R10B, Register.R10W, Register.R10D, Register.R10],
+        [Register.R11] = [Register.R11B, Register.R11W, Register.R11D, Register.R11],
+        [Register.R12] = [Register.R12B, Register.R12W, Register.R12D, Register.R12],
+        [Register.R13] = [Register.R13B, Register.R13W, Register.R13D, Register.R13],
+        [Register.R14] = [Register.R14B, Register.R13W, Register.R14D, Register.R14],
+        [Register.R15] = [Register.R15B, Register.R14W, Register.R15D, Register.R15],
+    };
+
+
     private HashSet<Register> usedRegisters = new();
     private Dictionary<IR.Value, MemoryLocation> valueLocations = new();
 
     public HashSet<Register> CalleeSavedRegisters { get; } = new();
 
+    private static Register PromoteRegister(Register register, RegisterSize size)
+    {
+        return registerFamilies[ToLargestRegister(register)][((int)size)];
+    }
+
+    public MemoryLocation Promote(MemoryLocation location, int size)
+    {
+        if (location is not RegisterLocation registerLocation)
+        {
+            return location;
+        }
+
+        var register = Enum.Parse<Register>(registerLocation.Name);
+        return new RegisterLocation(PromoteRegister(register, ByteSizeToRegisterSize(size).Value).ToString());
+    }
+
 
     // Promotes a register to its largest size in the family
-    private static Register ToLargestReg(Register reg)
+    private static Register ToLargestRegister(Register reg)
     {
         switch (reg)
         {
@@ -122,9 +162,22 @@ internal sealed class X64Allocator : IAllocator
         throw new ArgumentException(nameof(reg));
     }
 
-    public static RegisterSize? TypeToRegSize(IR.Type type)
+    public static RegisterSize? ByteSizeToRegisterSize(int numBytes)
     {
-        if (type is IR.IntType intType)
+        if (numBytes <= 1) return RegisterSize.BYTE;
+        if (numBytes <= 2) return RegisterSize.WORD;
+        if (numBytes <= 4) return RegisterSize.DWORD;
+        if (numBytes <= 8) return RegisterSize.QWORD;
+        return null;
+    }
+
+    public static RegisterSize? TypeToRegisterSize(IR.Type type)
+    {
+        if (type is IR.BooleanType)
+        {
+            return RegisterSize.BYTE;
+        }
+        else if (type is IR.IntType intType)
         {
             if (intType.BitWidth <= 8) return RegisterSize.BYTE;
             if (intType.BitWidth <= 16) return RegisterSize.WORD;
@@ -138,9 +191,11 @@ internal sealed class X64Allocator : IAllocator
 
         return null;
     }
+
+
     private static bool IsRegisterVolatile(Register register)
     {
-        Register largestRegister = ToLargestReg(register);
+        Register largestRegister = ToLargestRegister(register);
         switch (largestRegister)
         {
             case Register.RAX:
@@ -167,7 +222,7 @@ internal sealed class X64Allocator : IAllocator
         }
 
         int sizeOfType = value.Type.X64Size();
-        RegisterSize? regSize = TypeToRegSize(value.Type);
+        RegisterSize? regSize = TypeToRegisterSize(value.Type);
 
         if (regSize != null)
         {
@@ -177,7 +232,7 @@ internal sealed class X64Allocator : IAllocator
             {
                 // We don't want to use AL, then allow RAX to be used.
                 // The biggest register must be marked unavailable
-                Register largestSizedReg = ToLargestReg(register);
+                Register largestSizedReg = ToLargestRegister(register);
 
                 if (usedRegisters.Contains(largestSizedReg))
                 {
@@ -186,7 +241,7 @@ internal sealed class X64Allocator : IAllocator
 
                 // Found a free reg, now we can claim it
                 usedRegisters.Add(largestSizedReg);
-                
+
                 if (IsRegisterCalleeSaved(largestSizedReg))
                 {
                     CalleeSavedRegisters.Add(largestSizedReg);
@@ -217,6 +272,23 @@ internal sealed class X64Allocator : IAllocator
         }
     }
 
+    public bool IsAllocated(IR.Value value)
+    {
+        return valueLocations.ContainsKey(value);
+    }
+
+    public MemoryLocation GetOrAllocate(IR.Value value)
+    {
+        if (valueLocations.TryGetValue(value, out MemoryLocation location))
+        {
+            return location;
+        }
+        else
+        {
+            return Allocate(value);
+        }
+    }
+
     public void Free(IR.Value value)
     {
         MemoryLocation location = GetMemoryLocation(value);
@@ -229,7 +301,7 @@ internal sealed class X64Allocator : IAllocator
                 throw new InvalidRegisterException(registerLocation.Name);
             }
 
-            Register largestRegister = ToLargestReg(register);
+            Register largestRegister = ToLargestRegister(register);
             usedRegisters.Remove(largestRegister);
         }
     }
