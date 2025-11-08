@@ -2,12 +2,11 @@
 
 internal interface IAllocator
 {
-    // Returns the size of the type on the target machine as bytes
-    int SizeOfType(IR.Type type);
+    // Allocates a memory location for the value
+    MemoryLocation Allocate(IR.Value value);
+    
+    // De allocate the memory location of the value
+    void Free(IR.Value value);
 
-    // Allocates a memory location for the variable
-    MemoryLocation Allocate(IR.Variable variable);
-
-    // Translates the memory location into string form for assembly
-    string TranslateMemoryLocation(MemoryLocation location);
+    public static int Align16(int value) => (value + 15) & ~0xF;
 }

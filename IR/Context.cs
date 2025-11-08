@@ -1,5 +1,4 @@
 ﻿namespace CPL.IR;
-
 internal class VariableAlreadyDefinedException(string Name)
     : Exception($"Variable '{Name}' is already defined.");
 
@@ -33,7 +32,7 @@ internal class Context
         return block;
     }
 
-    public Value DeclareVariable(string name, AST.Type type)
+    public Variable DeclareVariable(string name, AST.Type type)
     {
         var irType = TypeConverter.Convert(type);
         var variable = new Variable(name, irType);

@@ -8,13 +8,30 @@ internal class DeclareVariable(string name, INode initializer, Type type) : INod
 
     public IR.Value CodeGen(IR.Context context)
     {
-        var variable = context.DeclareVariable(name: Name, type: Type);
+        IR.Value value = null;
 
         if (Initializer != null)
         {
-            IR.Value value = Initializer.CodeGen(context);
-            context.Emit(new IR.Store(variable, value));
+            value = Initializer.CodeGen(context);
         }
-        return variable;
+
+        var destination = context.DeclareVariable(name: Name, type: Type);
+
+        if (Initializer == null)
+        {
+            return destination;
+        }
+
+        if (Initializer is Identifier identifier)
+        {
+            var source = context.FindVariable(identifier.Name);
+            context.Emit(new IR.Store(destination, source));
+        }
+        else
+        {
+            context.Emit(new IR.Load(destination, value));
+        }
+
+        return destination;
     }
 }
