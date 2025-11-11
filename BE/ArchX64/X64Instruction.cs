@@ -1,24 +1,69 @@
-﻿namespace CPL.BE;
+﻿using static CPL.BE.X64Allocator;
 
-internal class X64Instruction(string mnemonic, string? operand1=null, string? operand2 = null)
+namespace CPL.BE;
+
+internal enum X64Mnemonic
 {
-    public string Mnemonic { get; } = mnemonic;
-    public string? Operand1 { get; } = operand1;
-    public string? Operand2 { get; } = operand2;
+    Mov,
+    MovZX,
 
-    public override string ToString()
-    {
-        if (Operand1 == null && Operand2 == null)
-        {
-            return $"\t{Mnemonic}";
-        }
-        else if (Operand2 == null)
-        {
-            return $"\t{Mnemonic} {Operand1}";
-        }
-        else
-        {
-            return $"\t{Mnemonic} {Operand1}, {Operand2}";
-        }
-    }
+    Push,
+    Pop,
+
+    Cmp,
+    Test,
+
+    // Set address to comparison result
+    SetL,
+    SetLE,
+    SetE,
+    SetG,
+    SetGE,
+    SetZ,
+
+    // Jumps:
+    Label,
+    Jmp,
+    JZ,
+    JL,
+    JG,
+    JGE,
+    JNE,
+
+    // Math
+    Add,
+    Sub,
+    Mul,
+    IDiv,
+}
+
+
+internal sealed class X64Instruction(X64Mnemonic mnemonic, List<X64Operand> operands)
+{
+    public X64Mnemonic Mnemonic { get; } = mnemonic;
+    public List<X64Operand> Operands { get; } = operands;
+}
+
+internal abstract class X64Operand;
+
+internal sealed class X64LabelOperand(string name) : X64Operand
+{
+    public string Name { get; } = name;
+}
+
+internal sealed class X64RegisterOperand(Register register) : X64Operand
+{
+    public Register Register { get; } = register;
+}
+
+internal sealed class X64StackOperand(int stackOffset, RegisterSize size) : X64Operand
+{
+    public int StackOffset { get; } = stackOffset;
+    public RegisterSize Size { get; } = size;
+}
+
+internal sealed class X64ImmediateOperand(string value, RegisterSize size) : X64Operand
+{
+    public string Value { get; } = value;
+    public RegisterSize Size { get; } = size;
 }

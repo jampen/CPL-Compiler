@@ -4,6 +4,7 @@ internal sealed class X64Backend() : Backend(new X64Allocator())
 {
     public override void Generate(IR.Context context)
     {
+
         WriteLine("section .text");
 
         foreach (var functionDefinition in context.Functions)
@@ -14,6 +15,7 @@ internal sealed class X64Backend() : Backend(new X64Allocator())
 
             // Emit instructions
             function.Block.Instructions.ForEach(selector.Emit);
+            var emitter = new X64AssemblyEmitter(selector.Instructions);
 
             // Emit Prologue
             WriteLine($"global {function.Name}");
@@ -30,10 +32,10 @@ internal sealed class X64Backend() : Backend(new X64Allocator())
                 WriteLine($"\tpush {calleeRegister}");
             }
 
-            // Function:
-            foreach (var instruction in selector.Instructions)
+            emitter.Emit();
+            foreach (var line in emitter.Assembly)
             {
-                WriteLine(instruction.ToString());
+                WriteLine(line);
             }
 
             // Pop callee registers

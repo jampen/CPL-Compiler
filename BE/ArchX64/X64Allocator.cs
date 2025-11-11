@@ -1,8 +1,4 @@
-﻿using CPL.IR;
-using System.Linq;
-using static CPL.BE.X64Allocator;
-
-namespace CPL.BE;
+﻿namespace CPL.BE;
 
 internal sealed class AlreadyAllocatedException(IR.Value value) : Exception($"{nameof(value)} was already allocated");
 internal sealed class NotAllocatedException(IR.Value value) : Exception($"{nameof(value)} is not allocated");
@@ -45,10 +41,10 @@ internal sealed class X64Allocator : IAllocator
     // Maps x64 register sizes to their family of registers
     private static readonly Dictionary<RegisterSize, Register[]> registers = new()
     {
-        [RegisterSize.QWORD] = [Register.RAX, Register.RBX, Register.RCX, Register.RDX, Register.R9, Register.R10, Register.R11, Register.R12, Register.R13, Register.R14, Register.R15],
-        [RegisterSize.DWORD] = [Register.EAX, Register.EBX, Register.ECX, Register.EDX, Register.R9D, Register.R10D, Register.R11D, Register.R12D, Register.R13D, Register.R14D, Register.R15D],
-        [RegisterSize.WORD] = [Register.AX, Register.BX, Register.CX, Register.DX, Register.R9W, Register.R10W, Register.R11W, Register.R12W, Register.R13W, Register.R14W, Register.R15W],
-        [RegisterSize.BYTE] = [Register.AL, Register.BL, Register.CL, Register.DL, Register.R9B, Register.R10B, Register.R11B, Register.R12B, Register.R13B, Register.R14B, Register.R15B],
+        [RegisterSize.QWORD] = [Register.RAX, Register.RBX, Register.RCX, Register.RDX, Register.R8, Register.R9, Register.R10, Register.R11, Register.R12, Register.R13, Register.R14, Register.R15],
+        [RegisterSize.DWORD] = [Register.EAX, Register.EBX, Register.ECX, Register.EDX, Register.R8D, Register.R9D, Register.R10D, Register.R11D, Register.R12D, Register.R13D, Register.R14D, Register.R15D],
+        [RegisterSize.WORD] = [Register.AX, Register.BX, Register.CX, Register.DX, Register.R8W, Register.R9W, Register.R10W, Register.R11W, Register.R12W, Register.R13W, Register.R14W, Register.R15W],
+        [RegisterSize.BYTE] = [Register.AL, Register.BL, Register.CL, Register.DL, Register.R8B, Register.R9B, Register.R10B, Register.R11B, Register.R12B, Register.R13B, Register.R14B, Register.R15B],
     };
 
 
@@ -59,19 +55,20 @@ internal sealed class X64Allocator : IAllocator
         [Register.RBX] = [Register.BL, Register.BX, Register.EBX, Register.RBX],
         [Register.RCX] = [Register.CL, Register.CX, Register.ECX, Register.RCX],
         [Register.RDX] = [Register.DL, Register.DX, Register.EDX, Register.RDX],
-        [Register.R8] =  [Register.R8B, Register.AX, Register.EAX, Register.RAX],
+        [Register.R8] =  [Register.R8B, Register.R8W, Register.R8D, Register.R8],
         [Register.R9] =  [Register.R9B, Register.R9W, Register.R9D, Register.R9],
         [Register.R10] = [Register.R10B, Register.R10W, Register.R10D, Register.R10],
         [Register.R11] = [Register.R11B, Register.R11W, Register.R11D, Register.R11],
         [Register.R12] = [Register.R12B, Register.R12W, Register.R12D, Register.R12],
         [Register.R13] = [Register.R13B, Register.R13W, Register.R13D, Register.R13],
-        [Register.R14] = [Register.R14B, Register.R13W, Register.R14D, Register.R14],
-        [Register.R15] = [Register.R15B, Register.R14W, Register.R15D, Register.R15],
+        [Register.R14] = [Register.R14B, Register.R14W, Register.R14D, Register.R14],
+        [Register.R15] = [Register.R15B, Register.R15W, Register.R15D, Register.R15],
     };
 
 
     private HashSet<Register> usedRegisters = new();
     private Dictionary<IR.Value, MemoryLocation> valueLocations = new();
+    private Dictionary<IR.Value, RegisterSize> valueSizes = new();
 
     public HashSet<Register> CalleeSavedRegisters { get; } = new();
 
@@ -223,6 +220,7 @@ internal sealed class X64Allocator : IAllocator
 
         int sizeOfType = value.Type.X64Size();
         RegisterSize? regSize = TypeToRegisterSize(value.Type);
+        valueSizes[value] = regSize.Value;
 
         if (regSize != null)
         {
@@ -233,6 +231,12 @@ internal sealed class X64Allocator : IAllocator
                 // We don't want to use AL, then allow RAX to be used.
                 // The biggest register must be marked unavailable
                 Register largestSizedReg = ToLargestRegister(register);
+
+                // Never use volatile registers
+                if (IsRegisterVolatile(largestSizedReg))
+                {
+                    continue;
+                }
 
                 if (usedRegisters.Contains(largestSizedReg))
                 {
@@ -258,6 +262,30 @@ internal sealed class X64Allocator : IAllocator
         var stackLocation = new StackLocation(StackSize);
         valueLocations[value] = stackLocation;
         return stackLocation;
+    }
+
+    public RegisterLocation AllocateTemporary(IR.Value value)
+    {
+        var size = TypeToRegisterSize(value.Type).Value;
+        var family = registers[size];
+        
+        foreach (var reg in family)
+        {
+            if (!IsRegisterVolatile(reg))
+            {
+                continue;
+            }
+
+            if (usedRegisters.Contains(reg))
+            {
+                continue;
+            }
+
+            usedRegisters.Add(reg);
+            return new RegisterLocation(reg.ToString());
+        }
+
+        return null;
     }
 
     public MemoryLocation GetMemoryLocation(IR.Value value)
@@ -289,11 +317,21 @@ internal sealed class X64Allocator : IAllocator
         }
     }
 
+    public RegisterSize GetValueSize(IR.Value value)
+    {
+        return valueSizes[value];
+    }
+
     public void Free(IR.Value value)
     {
         MemoryLocation location = GetMemoryLocation(value);
         valueLocations.Remove(value);
+        valueSizes.Remove(value);
+        Free(location);
+    }
 
+    public void Free(MemoryLocation location)
+    {
         if (location is RegisterLocation registerLocation)
         {
             if (!Enum.TryParse(registerLocation.Name, out Register register))
