@@ -18,53 +18,30 @@ internal sealed class X64AssemblyEmitter(List<X64Instruction> instructions)
     {
         switch (instruction.Mnemonic)
         {
-            case X64Mnemonic.Mov: Mov(instruction);  break;
-            case X64Mnemonic.MovZX: Mov(instruction);  break;
+            case X64Mnemonic.Mov: Mov(instruction); break;
+            case X64Mnemonic.MovZX: Mov(instruction); break;
         }
     }
 
     private void Mov(X64Instruction instruction)
     {
         string opcode = instruction.Mnemonic.ToString();
-        var destination = instruction.Operands[0];
-        var source = instruction.Operands[1];
 
-        if (destination is X64RegisterOperand destinationRegister)
+        string dest = instruction.Operands[0] switch
         {
-            if (source is X64RegisterOperand sourceRegister)
-            {
-                Assembly.Add($"\t{opcode} {destinationRegister.Register}, {sourceRegister.Register}");
-            }
+            X64RegisterOperand reg => reg.Register.ToString(),
+            X64StackOperand stack => $"{stack.Size} [rbp-{stack.StackOffset}]",
+            _ => throw new ArgumentException("invalid destination argument")
+        };
 
-            if (source is X64ImmediateOperand sourceImmediate)
-            {
-                Assembly.Add($"\t{opcode} {destinationRegister.Register}, {sourceImmediate.Size} {sourceImmediate.Value}");
-            }
-
-            if (source is X64StackOperand sourceStack)
-            {
-                Assembly.Add($"\t{opcode} {destinationRegister.Register}, {sourceStack.Size} [rbp-{sourceStack.StackOffset}]");
-            }
-        }
-
-        if (destination is X64StackOperand destinationStack)
+        string src = instruction.Operands[1] switch
         {
-            string location = $"{destinationStack.Size} [rbp-{destinationStack.StackOffset}]";
+            X64RegisterOperand reg => reg.Register.ToString(),
+            X64ImmediateOperand imm => $"{imm.Size} {imm.Value}",
+            X64StackOperand stack => $"{stack.Size} [rbp-{stack.StackOffset}]",
+            _ => throw new ArgumentException("invalid source argument")
+        };
 
-            if (source is X64RegisterOperand sourceRegister)
-            {
-                Assembly.Add($"\t{opcode} {location}, {sourceRegister.Register}");
-            }
-
-            if (source is X64ImmediateOperand sourceImmediate)
-            {
-                Assembly.Add($"\t{opcode} {location}, {sourceImmediate.Size} {sourceImmediate.Value}");
-            }
-
-            if (source is X64StackOperand sourceStack)
-            {
-                Assembly.Add($"\t{opcode} {location}, {sourceStack.Size} [rbp-{sourceStack.StackOffset}]");
-            }
-        }
+        Assembly.Add($"\t{opcode} {dest}, {src}");
     }
 }
