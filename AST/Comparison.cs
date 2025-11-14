@@ -12,7 +12,8 @@ internal sealed class Comparison (INode left, INode right, ComparisonType compar
         var rightValue = Right.CodeGen(context);
         var storage = new IR.TemporaryVariable(new IR.BooleanType());
         var comparison = new IR.Comparison(storage, leftValue, rightValue, ComparisonType);
-        return comparison;
+        context.Emit(comparison);
+        return storage;
     }
 }
 
@@ -24,7 +25,4 @@ internal enum ComparisonType
     NotEqual,
     GreaterThan,
     GreaterThanOrEqual,
-    And,
-    Or,
-    Xor
 }

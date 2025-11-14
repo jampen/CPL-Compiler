@@ -1,4 +1,5 @@
 ﻿using CPL.AST;
+using CPL.BE;
 
 namespace CPL.IR;
 internal class VariableAlreadyDefinedException(string Name)

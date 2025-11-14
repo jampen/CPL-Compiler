@@ -17,9 +17,9 @@ internal enum X64Mnemonic
     SetL,
     SetLE,
     SetE,
+    SetNE,
     SetG,
     SetGE,
-    SetZ,
 
     // Jumps:
     Label,

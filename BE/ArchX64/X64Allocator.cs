@@ -68,14 +68,13 @@ internal sealed class X64Allocator : IAllocator
 
     private HashSet<Register> usedRegisters = new();
     private Dictionary<IR.Value, MemoryLocation> valueLocations = new();
+    private Dictionary<MemoryLocation, RegisterSize> locationSizes = new();
     private Dictionary<IR.Value, RegisterSize> valueSizes = new();
 
     public HashSet<Register> CalleeSavedRegisters { get; } = new();
 
-    private static Register PromoteRegister(Register register, RegisterSize size)
-    {
-        return registerFamilies[ToLargestRegister(register)][((int)size)];
-    }
+    private static Register PromoteRegister(Register register, RegisterSize size) =>
+        registerFamilies[ToLargestRegister(register)][((int)size)];
 
     public MemoryLocation Promote(MemoryLocation location, int size)
     {
@@ -190,21 +189,12 @@ internal sealed class X64Allocator : IAllocator
     }
 
 
-    private static bool IsRegisterVolatile(Register register)
-    {
-        Register largestRegister = ToLargestRegister(register);
-        switch (largestRegister)
+    private static bool IsRegisterVolatile(Register register) =>
+        ToLargestRegister(register) switch
         {
-            case Register.RAX:
-            case Register.RCX:
-            case Register.RDX:
-            case Register.R8:
-            case Register.R9:
-            case Register.R10:
-            case Register.R11: return true;
-        }
-        return false;
-    }
+            Register.RAX or Register.RCX or Register.RDX or Register.R8 or Register.R9 or Register.R10 or Register.R11 => true,
+            _ => false,
+        };
 
     private static bool IsRegisterCalleeSaved(Register register)
     {
@@ -218,52 +208,56 @@ internal sealed class X64Allocator : IAllocator
             throw new AlreadyAllocatedException(value);
         }
 
-        int sizeOfType = value.Type.X64Size();
-        RegisterSize? regSize = TypeToRegisterSize(value.Type);
-        valueSizes[value] = regSize.Value;
+        // First check for a valid register
+        RegisterSize? valueSize = TypeToRegisterSize(value.Type);
 
-        if (regSize != null)
+        StackLocation StackAlloc()
         {
-            Register[] sameSizedRegs = registers[regSize.Value];
-
-            foreach (Register register in sameSizedRegs)
-            {
-                // We don't want to use AL, then allow RAX to be used.
-                // The biggest register must be marked unavailable
-                Register largestSizedReg = ToLargestRegister(register);
-
-                // Never use volatile registers
-                if (IsRegisterVolatile(largestSizedReg))
-                {
-                    continue;
-                }
-
-                if (usedRegisters.Contains(largestSizedReg))
-                {
-                    continue;
-                }
-
-                // Found a free reg, now we can claim it
-                usedRegisters.Add(largestSizedReg);
-
-                if (IsRegisterCalleeSaved(largestSizedReg))
-                {
-                    CalleeSavedRegisters.Add(largestSizedReg);
-                }
-
-                var registerLocation = new RegisterLocation(register.ToString());
-                valueLocations[value] = registerLocation;
-                return registerLocation;
-            }
-            // All the regs have been used. Fall to stack space.
+            // Allocate it on the stack
+            StackSize += value.Type.X64Size();
+            var stackLocation = new StackLocation(StackSize);
+            valueLocations[value] = stackLocation;
+            locationSizes[stackLocation] = valueSize.Value;
+            return stackLocation;
         }
 
-        StackSize += sizeOfType;
-        var stackLocation = new StackLocation(StackSize);
-        valueLocations[value] = stackLocation;
-        return stackLocation;
-    }
+        if (!valueSize.HasValue)
+        {
+            // Use stack space
+            return StackAlloc();
+        }
 
+        foreach (var reg in registers[valueSize.Value])
+        {
+            Register largestRegister = ToLargestRegister(reg);
+
+            // Don't use volatile registers because functions may change them. They are not saved.
+            if (IsRegisterVolatile(largestRegister))
+            {
+                continue;
+            }
+
+            // This register is already in use
+            if (usedRegisters.Contains(largestRegister))
+            {
+                continue;
+            }
+
+            // Callee Register found
+            CalleeSavedRegisters.Add(largestRegister);
+            usedRegisters.Add(largestRegister);
+
+            
+
+            var location = new RegisterLocation(reg.ToString());
+            valueLocations[value] = location;
+            locationSizes[location] = valueSize.Value;
+            return location;
+        }
+
+        return StackAlloc();
+    }
+    
     public RegisterLocation AllocateTemporary(IR.Value value)
     {
         var size = TypeToRegisterSize(value.Type).Value;
@@ -281,52 +275,35 @@ internal sealed class X64Allocator : IAllocator
                 continue;
             }
 
+            var location = new RegisterLocation(reg.ToString());
             usedRegisters.Add(reg);
-            return new RegisterLocation(reg.ToString());
-        }
-
-        return null;
-    }
-
-    public MemoryLocation GetMemoryLocation(IR.Value value)
-    {
-        if (valueLocations.TryGetValue(value, out MemoryLocation location))
-        {
+            valueLocations[value] = location;
+            locationSizes[location] = size;
             return location;
         }
-        else
-        {
-            throw new NotAllocatedException(value);
-        }
+
+        throw new Exception("Temporary registers exhausted");
     }
 
-    public bool IsAllocated(IR.Value value)
-    {
-        return valueLocations.ContainsKey(value);
-    }
+    public MemoryLocation GetMemoryLocation(IR.Value value) =>
+        valueLocations.TryGetValue(value, out var location) 
+        ? location
+        : throw new NotAllocatedException(value);
 
-    public MemoryLocation GetOrAllocate(IR.Value value)
-    {
-        if (valueLocations.TryGetValue(value, out MemoryLocation location))
-        {
-            return location;
-        }
-        else
-        {
-            return Allocate(value);
-        }
-    }
+    public RegisterSize GetMemoryLocationSize(MemoryLocation location) =>
+        locationSizes.TryGetValue(location, out RegisterSize value) 
+        ? value
+        : throw new ArgumentException("Not allocated");
 
-    public RegisterSize GetValueSize(IR.Value value)
-    {
-        return valueSizes[value];
-    }
+    public bool IsAllocated(IR.Value value) => valueLocations.ContainsKey(value);
+    public RegisterSize GetValueSize(IR.Value value) => valueSizes[value];
 
     public void Free(IR.Value value)
     {
         MemoryLocation location = GetMemoryLocation(value);
         valueLocations.Remove(value);
         valueSizes.Remove(value);
+        locationSizes.Remove(location);
         Free(location);
     }
 
@@ -338,9 +315,9 @@ internal sealed class X64Allocator : IAllocator
             {
                 throw new InvalidRegisterException(registerLocation.Name);
             }
-
-            Register largestRegister = ToLargestRegister(register);
-            usedRegisters.Remove(largestRegister);
+            usedRegisters.Remove(register);
         }
+
+        locationSizes.Remove(location);
     }
 }

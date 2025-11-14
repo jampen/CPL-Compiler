@@ -20,16 +20,16 @@ internal sealed class X64Backend() : Backend(new X64Allocator())
             // Emit Prologue
             WriteLine($"global {function.Name}");
             WriteLine($"{function.Name}:");
-            WriteLine("\tpush rbp");
-            WriteLine("\tmov rbp, rsp");
-            WriteLine($"\tsub rsp, {IAllocator.Align16(allocator.StackSize)}");
+            WriteLine("\tPush RBP");
+            WriteLine("\tMov RBP, RSP");
+            WriteLine($"\tSub RSP, {IAllocator.Align16(allocator.StackSize)}");
 
             Stack<X64Allocator.Register> calleeRegisters = new (allocator.CalleeSavedRegisters.AsEnumerable());
 
             // Save callee registers
             foreach (X64Allocator.Register calleeRegister in allocator.CalleeSavedRegisters)
             {
-                WriteLine($"\tpush {calleeRegister}");
+                WriteLine($"\tPush {calleeRegister}");
             }
 
             emitter.Emit();
@@ -41,13 +41,13 @@ internal sealed class X64Backend() : Backend(new X64Allocator())
             // Pop callee registers
             while (calleeRegisters.Count > 0) { 
                 X64Allocator.Register calleeRegister = calleeRegisters.Pop();
-                WriteLine($"\tpop {calleeRegister}");
+                WriteLine($"\tPop {calleeRegister}");
             }
 
             // Emit Epilogue
-            WriteLine("\tmov rsp, rbp");
-            WriteLine("\tpop rbp");
-            WriteLine("\tret");
+            WriteLine("\tMov RSP, RBP");
+            WriteLine("\tPop RBP");
+            WriteLine("\tRet");
         }
     }
     
